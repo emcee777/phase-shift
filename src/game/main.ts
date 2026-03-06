@@ -8,11 +8,11 @@ import { LevelSelectScene } from './scenes/LevelSelectScene';
 import { LevelScene } from './scenes/LevelScene';
 import { Game as LegacyGame } from './scenes/Game';
 import { GameOver } from './scenes/GameOver';
-import { AUTO, Game } from 'phaser';
+import { WEBGL, Game } from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS } from './config/constants';
 
 const config: Phaser.Types.Core.GameConfig = {
-    type: AUTO,
+    type: WEBGL,
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
     parent: 'game-container',

@@ -1,5 +1,5 @@
 // Phase Shift — TutorialOverlay
-// In-level hint text displayed at the top of the play area
+// In-level hint text: fades in with slight upward drift
 
 import { Scene, GameObjects } from 'phaser';
 import { FONTS, GAME_WIDTH, HUD_HEIGHT } from '../config/constants';
@@ -39,11 +39,15 @@ export class TutorialOverlay {
         this.visible = true;
         this.container.setAlpha(0);
 
-        // Fade in
+        // Start slightly below, drift upward as it fades in
+        const targetY = 0;
+        this.container.y = 8;
+
         this.scene.tweens.add({
             targets: this.container,
             alpha: 1,
-            duration: 300,
+            y: targetY,
+            duration: 500,
             ease: 'Power2',
         });
 
@@ -62,7 +66,8 @@ export class TutorialOverlay {
         this.scene.tweens.add({
             targets: this.container,
             alpha: 0,
-            duration: 300,
+            y: this.container.y - 5,
+            duration: 400,
             ease: 'Power2',
         });
     }

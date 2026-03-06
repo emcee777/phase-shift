@@ -1,5 +1,5 @@
 // Phase Shift — HUD
-// Displays level info, move count, collapse charges, undo indicator
+// Displays level info, move count with color coding, collapse charges as glowing orbs
 
 import { Scene, GameObjects } from 'phaser';
 import { COLORS, FONTS, GAME_WIDTH, HUD_HEIGHT } from '../config/constants';
@@ -11,7 +11,7 @@ export class HUD {
     private levelText: GameObjects.Text;
     private moveText: GameObjects.Text;
     private collapseText: GameObjects.Text;
-    private collapseIndicators: GameObjects.Arc[] = [];
+    private collapseOrbs: Array<{ core: GameObjects.Arc; glow: GameObjects.Arc }> = [];
     private undoText: GameObjects.Text;
     private dimALabel: GameObjects.Text;
     private dimBLabel: GameObjects.Text;
@@ -85,14 +85,16 @@ export class HUD {
         }
         this.moveText.setText(text);
 
-        // Color based on par
+        // Color based on par — green below, yellow at, red above
         if (par) {
             if (count <= par[0]) {
                 this.moveText.setColor('#44ff44');
             } else if (count <= par[1]) {
                 this.moveText.setColor('#ffdd44');
+            } else if (count <= par[2]) {
+                this.moveText.setColor('#ff8844');
             } else {
-                this.moveText.setColor('#ccccdd');
+                this.moveText.setColor('#ff4444');
             }
         }
     }
@@ -100,28 +102,58 @@ export class HUD {
     setCollapseCharges(current: number, max: number): void {
         if (max === 0) {
             this.collapseText.setText('');
-            // Clean up indicators
-            for (const ind of this.collapseIndicators) ind.destroy();
-            this.collapseIndicators = [];
+            this.clearOrbs();
             return;
         }
 
         this.collapseText.setText('Collapse: ');
-
-        // Rebuild indicators
-        for (const ind of this.collapseIndicators) ind.destroy();
-        this.collapseIndicators = [];
+        this.clearOrbs();
 
         const startX = this.collapseText.x + this.collapseText.width + 8;
         for (let i = 0; i < max; i++) {
             const filled = i < current;
-            const dot = this.scene.add.circle(
-                startX + i * 18, HUD_HEIGHT / 2, 5,
+            const orbX = startX + i * 22;
+            const orbY = HUD_HEIGHT / 2;
+
+            // Glow circle behind
+            const glow = this.scene.add.circle(
+                orbX, orbY, 8,
                 filled ? COLORS.COLLAPSE_ACTIVE : COLORS.COLLAPSE_INACTIVE,
-                filled ? 0.9 : 0.3,
+                filled ? 0.15 : 0.03,
+            ).setDepth(209);
+
+            // Core orb
+            const core = this.scene.add.circle(
+                orbX, orbY, 5,
+                filled ? COLORS.COLLAPSE_ACTIVE : COLORS.COLLAPSE_INACTIVE,
+                filled ? 0.9 : 0.2,
             ).setDepth(210);
-            this.collapseIndicators.push(dot);
+            core.setStrokeStyle(1, filled ? COLORS.COLLAPSE_PICKUP_GLOW : COLORS.COLLAPSE_INACTIVE, filled ? 0.5 : 0.1);
+
+            if (filled) {
+                // Gentle pulse on filled orbs
+                this.scene.tweens.add({
+                    targets: glow,
+                    scaleX: 1.3,
+                    scaleY: 1.3,
+                    alpha: 0.06,
+                    duration: 1200,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: 'Sine.easeInOut',
+                });
+            }
+
+            this.collapseOrbs.push({ core, glow });
         }
+    }
+
+    private clearOrbs(): void {
+        for (const orb of this.collapseOrbs) {
+            orb.core.destroy();
+            orb.glow.destroy();
+        }
+        this.collapseOrbs = [];
     }
 
     setCollapseMode(dim: Dimension | null): void {
@@ -136,6 +168,6 @@ export class HUD {
 
     destroy(): void {
         this.container.destroy(true);
-        for (const ind of this.collapseIndicators) ind.destroy();
+        this.clearOrbs();
     }
 }

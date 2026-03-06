@@ -1,5 +1,6 @@
 // Phase Shift — LevelScene
 // THE MAIN PUZZLE SCENE: Split screen, dual grids, full gameplay
+// Visual polish: bloom, ambient particles, enhanced divider, move particles
 
 import { Scene, GameObjects } from 'phaser';
 import {
@@ -23,6 +24,7 @@ import { createExitPortal } from '../entities/ExitPortal';
 import { createPhaseGate } from '../entities/PhaseGate';
 import { createCollapsePickup } from '../entities/CollapsePickup';
 import { createIceTile } from '../entities/IceTile';
+import { applyBloom } from '../rendering/BloomPipeline';
 import { HUD } from '../ui/HUD';
 import { TutorialOverlay } from '../ui/TutorialOverlay';
 import { VictoryOverlay } from '../ui/VictoryOverlay';
@@ -56,6 +58,8 @@ export class LevelScene extends Scene {
     private gridGraphicsA!: GameObjects.Graphics;
     private gridGraphicsB!: GameObjects.Graphics;
     private dividerLine!: GameObjects.Rectangle;
+    private dividerGlow!: GameObjects.Rectangle;
+    private ambientMotes: GameObjects.Arc[] = [];
 
     // State
     private currentWorld = 1;
@@ -78,6 +82,9 @@ export class LevelScene extends Scene {
     create(): void {
         this.cameras.main.setBackgroundColor(COLORS.BG);
 
+        // Apply soft bloom
+        applyBloom(this);
+
         // Initialize systems
         this.grid = new DualGrid();
         this.moveResolver = new MoveResolver(this.grid);
@@ -95,13 +102,39 @@ export class LevelScene extends Scene {
         this.victory = new VictoryOverlay(this);
         this.pauseMenu = new MenuUI(this);
 
-        // Center divider
+        // Center divider with glow
+        this.dividerGlow = this.add.rectangle(
+            GAME_WIDTH / 2, GAME_HEIGHT / 2 + HUD_HEIGHT / 2,
+            DIVIDER_WIDTH + 6, GAME_HEIGHT - HUD_HEIGHT,
+            0xffffff, 0.04,
+        );
+        this.dividerGlow.setDepth(149);
+
         this.dividerLine = this.add.rectangle(
             GAME_WIDTH / 2, GAME_HEIGHT / 2 + HUD_HEIGHT / 2,
             DIVIDER_WIDTH, GAME_HEIGHT - HUD_HEIGHT,
-            COLORS.DIVIDER, 0.4,
+            0xffffff, 0.3,
         );
         this.dividerLine.setDepth(150);
+
+        // Divider pulse
+        this.tweens.add({
+            targets: this.dividerGlow,
+            alpha: 0.08,
+            duration: 3000,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut',
+        });
+
+        this.tweens.add({
+            targets: this.dividerLine,
+            alpha: 0.2,
+            duration: 2500,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut',
+        });
 
         // Grid backgrounds
         this.gridGraphicsA = this.add.graphics();
@@ -115,6 +148,9 @@ export class LevelScene extends Scene {
         this.inputSystem.setOnRestart(() => this.restartLevel());
         this.inputSystem.setOnPause(() => this.togglePause());
 
+        // Spawn ambient motes
+        this.spawnAmbientMotes();
+
         // Load level
         this.loadLevel(this.currentWorld, this.currentLevelNum);
 
@@ -125,6 +161,112 @@ export class LevelScene extends Scene {
     update(time: number): void {
         if (!this.paused && !this.levelComplete && !this.animating) {
             this.inputSystem.update(time);
+        }
+    }
+
+    // --- Ambient Particles ---
+
+    private spawnAmbientMotes(): void {
+        // Very sparse — 2 motes per dimension, slow drift
+        for (let i = 0; i < 2; i++) {
+            this.createAmbientMote(Dimension.A);
+            this.createAmbientMote(Dimension.B);
+        }
+    }
+
+    private createAmbientMote(dim: Dimension): void {
+        const panelX = dim === Dimension.A ? 0 : PANEL_WIDTH;
+        const color = dim === Dimension.A ? COLORS.DIM_A_PRIMARY : COLORS.DIM_B_PRIMARY;
+
+        const x = panelX + Math.random() * PANEL_WIDTH;
+        const y = HUD_HEIGHT + 40 + Math.random() * (GAME_HEIGHT - HUD_HEIGHT - 80);
+        const mote = this.add.circle(x, y, 1.5 + Math.random(), color, 0.15 + Math.random() * 0.1);
+        mote.setDepth(3);
+        this.ambientMotes.push(mote);
+
+        const driftMote = () => {
+            if (!mote.active) return;
+            const targetX = panelX + 20 + Math.random() * (PANEL_WIDTH - 40);
+            const targetY = HUD_HEIGHT + 40 + Math.random() * (GAME_HEIGHT - HUD_HEIGHT - 80);
+
+            this.tweens.add({
+                targets: mote,
+                x: targetX,
+                y: targetY,
+                alpha: 0.08 + Math.random() * 0.15,
+                duration: 6000 + Math.random() * 4000,
+                ease: 'Sine.easeInOut',
+                onComplete: driftMote,
+            });
+        };
+
+        driftMote();
+    }
+
+    // --- Move Particles ---
+
+    private spawnMoveParticles(px: number, py: number, color: number): void {
+        for (let i = 0; i < 3; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 5 + Math.random() * 10;
+            const dot = this.add.circle(px, py, 1.5, color, 0.5);
+            dot.setDepth(95);
+
+            this.tweens.add({
+                targets: dot,
+                x: px + Math.cos(angle) * dist,
+                y: py + Math.sin(angle) * dist,
+                alpha: 0,
+                scaleX: 0.3,
+                scaleY: 0.3,
+                duration: 300 + Math.random() * 200,
+                ease: 'Power2',
+                onComplete: () => dot.destroy(),
+            });
+        }
+    }
+
+    private spawnBoxPushParticles(px: number, py: number, color: number): void {
+        for (let i = 0; i < 4; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 8 + Math.random() * 8;
+            const dot = this.add.circle(px, py, 1 + Math.random(), color, 0.6);
+            dot.setDepth(55);
+
+            this.tweens.add({
+                targets: dot,
+                x: px + Math.cos(angle) * dist,
+                y: py + Math.sin(angle) * dist,
+                alpha: 0,
+                duration: 250 + Math.random() * 150,
+                ease: 'Power1',
+                onComplete: () => dot.destroy(),
+            });
+        }
+    }
+
+    private spawnCollapseParticles(px: number, py: number, dim: Dimension): void {
+        const color = dim === Dimension.A ? COLORS.DIM_A_PRIMARY : COLORS.DIM_B_PRIMARY;
+        for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2;
+            const startDist = 20;
+            const startX = px + Math.cos(angle) * startDist;
+            const startY = py + Math.sin(angle) * startDist;
+            const dot = this.add.circle(startX, startY, 2, color, 0.6);
+            dot.setDepth(110);
+
+            this.tweens.add({
+                targets: dot,
+                x: px,
+                y: py,
+                alpha: 0,
+                scaleX: 0.2,
+                scaleY: 0.2,
+                duration: 400,
+                delay: i * 30,
+                ease: 'Power2',
+                onComplete: () => dot.destroy(),
+            });
         }
     }
 
@@ -197,27 +339,33 @@ export class LevelScene extends Scene {
         this.moveCount++;
         this.animating = true;
 
-        // Animate player movement
+        // Animate player movement + spawn move particles at previous position
         if (result.playerAMoved) {
+            // Spawn particles at current (pre-move) position before animating
+            this.spawnMoveParticles(this.particleA.getContainer().x, this.particleA.getContainer().y, COLORS.DIM_A_PRIMARY);
             const px = this.gridToPixelX(Dimension.A, result.newPlayerA.x);
             const py = this.gridToPixelY(Dimension.A, result.newPlayerA.y);
             this.particleA.moveTo(px, py);
         }
 
         if (result.playerBMoved) {
+            this.spawnMoveParticles(this.particleB.getContainer().x, this.particleB.getContainer().y, COLORS.DIM_B_PRIMARY);
             const px = this.gridToPixelX(Dimension.B, result.newPlayerB.x);
             const py = this.gridToPixelY(Dimension.B, result.newPlayerB.y);
             this.particleB.moveTo(px, py);
         }
 
-        // Animate box pushes
+        // Animate box pushes with particles
         if (result.boxPushA) {
             const key = `${result.boxPushA.from.x},${result.boxPushA.from.y}`;
             const box = this.boxMapA.get(key);
             if (box) {
                 const toX = this.gridToPixelX(Dimension.A, result.boxPushA.to.x);
                 const toY = this.gridToPixelY(Dimension.A, result.boxPushA.to.y);
-                animateBoxPush(this, box, toX, toY);
+                const fromPx = this.gridToPixelX(Dimension.A, result.boxPushA.from.x);
+                const fromPy = this.gridToPixelY(Dimension.A, result.boxPushA.from.y);
+                animateBoxPush(this, box, toX, toY, direction);
+                this.spawnBoxPushParticles(fromPx, fromPy, COLORS.BOX_STROKE);
                 this.boxMapA.delete(key);
                 this.boxMapA.set(`${result.boxPushA.to.x},${result.boxPushA.to.y}`, box);
             }
@@ -229,7 +377,10 @@ export class LevelScene extends Scene {
             if (box) {
                 const toX = this.gridToPixelX(Dimension.B, result.boxPushB.to.x);
                 const toY = this.gridToPixelY(Dimension.B, result.boxPushB.to.y);
-                animateBoxPush(this, box, toX, toY);
+                const fromPx = this.gridToPixelX(Dimension.B, result.boxPushB.from.x);
+                const fromPy = this.gridToPixelY(Dimension.B, result.boxPushB.from.y);
+                animateBoxPush(this, box, toX, toY, direction);
+                this.spawnBoxPushParticles(fromPx, fromPy, COLORS.BOX_STROKE);
                 this.boxMapB.delete(key);
                 this.boxMapB.set(`${result.boxPushB.to.x},${result.boxPushB.to.y}`, box);
             }
@@ -331,6 +482,15 @@ export class LevelScene extends Scene {
             this.currentLevel?.collapseCharges || 0,
         );
 
+        // Collapse swirl particles around active player
+        const activeDim = this.collapseSystem.getCollapsedDimension();
+        if (activeDim) {
+            const pos = this.grid.getPlayerPos(activeDim);
+            const px = this.gridToPixelX(activeDim, pos.x);
+            const py = this.gridToPixelY(activeDim, pos.y);
+            this.spawnCollapseParticles(px, py, activeDim);
+        }
+
         this.updateCollapseVisuals();
     }
 
@@ -393,7 +553,7 @@ export class LevelScene extends Scene {
     }
 
     private playCompletionAnimation(): void {
-        // Burst particles from both exit positions
+        // Enhanced burst from both exits
         const posA = this.grid.getPlayerPos(Dimension.A);
         const posB = this.grid.getPlayerPos(Dimension.B);
 
@@ -407,13 +567,25 @@ export class LevelScene extends Scene {
             this.gridToPixelY(Dimension.B, posB.y),
             COLORS.DIM_B_PRIMARY,
         );
+
+        // Additional sparkle ring
+        this.burstSparkleRing(
+            this.gridToPixelX(Dimension.A, posA.x),
+            this.gridToPixelY(Dimension.A, posA.y),
+            COLORS.DIM_A_GLOW,
+        );
+        this.burstSparkleRing(
+            this.gridToPixelX(Dimension.B, posB.x),
+            this.gridToPixelY(Dimension.B, posB.y),
+            COLORS.DIM_B_GLOW,
+        );
     }
 
     private burstParticles(x: number, y: number, color: number): void {
-        for (let i = 0; i < 12; i++) {
-            const angle = (i / 12) * Math.PI * 2;
-            const dist = 40 + Math.random() * 30;
-            const dot = this.add.circle(x, y, 3 + Math.random() * 3, color, 0.8);
+        for (let i = 0; i < 16; i++) {
+            const angle = (i / 16) * Math.PI * 2;
+            const dist = 45 + Math.random() * 35;
+            const dot = this.add.circle(x, y, 2 + Math.random() * 3, color, 0.9);
             dot.setDepth(400);
 
             this.tweens.add({
@@ -421,11 +593,49 @@ export class LevelScene extends Scene {
                 x: x + Math.cos(angle) * dist,
                 y: y + Math.sin(angle) * dist,
                 alpha: 0,
-                scaleX: 0.2,
-                scaleY: 0.2,
-                duration: 600 + Math.random() * 300,
+                scaleX: 0.1,
+                scaleY: 0.1,
+                duration: 700 + Math.random() * 400,
                 ease: 'Power2',
                 onComplete: () => dot.destroy(),
+            });
+        }
+    }
+
+    private burstSparkleRing(x: number, y: number, color: number): void {
+        // Expanding ring
+        const ring = this.add.circle(x, y, 5, color, 0);
+        ring.setStrokeStyle(2, color, 0.6);
+        ring.setDepth(401);
+
+        this.tweens.add({
+            targets: ring,
+            scaleX: 8,
+            scaleY: 8,
+            alpha: 0,
+            duration: 800,
+            ease: 'Power1',
+            onComplete: () => ring.destroy(),
+        });
+
+        // Tiny sparkles with delay
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2 + Math.random() * 0.3;
+            const dist = 25 + Math.random() * 15;
+            const sparkle = this.add.circle(x, y, 1.5, 0xffffff, 0);
+            sparkle.setDepth(402);
+
+            this.tweens.add({
+                targets: sparkle,
+                x: x + Math.cos(angle) * dist,
+                y: y + Math.sin(angle) * dist,
+                alpha: { from: 0.8, to: 0 },
+                scaleX: { from: 1, to: 0.2 },
+                scaleY: { from: 1, to: 0.2 },
+                duration: 500,
+                delay: 200 + i * 50,
+                ease: 'Power2',
+                onComplete: () => sparkle.destroy(),
             });
         }
     }
@@ -505,14 +715,15 @@ export class LevelScene extends Scene {
         const panelIndex = dim === Dimension.A ? 0 : 1;
         const offset = getGridOffset(width, height, panelIndex as 0 | 1);
         const bgColor = dim === Dimension.A ? COLORS.DIM_A_BG : COLORS.DIM_B_BG;
+        const lineColor = dim === Dimension.A ? COLORS.DIM_A_DARK : COLORS.DIM_B_DARK;
 
         // Panel background
         const panelX = panelIndex * PANEL_WIDTH;
-        graphics.fillStyle(bgColor, 0.5);
+        graphics.fillStyle(bgColor, 0.6);
         graphics.fillRect(panelX, HUD_HEIGHT, PANEL_WIDTH, GAME_HEIGHT - HUD_HEIGHT);
 
-        // Grid lines
-        graphics.lineStyle(1, COLORS.FLOOR_LINE, 0.2);
+        // Grid lines — dimension-colored, very subtle
+        graphics.lineStyle(1, lineColor, 0.08);
         for (let x = 0; x <= width; x++) {
             graphics.lineBetween(
                 offset.x + x * CELL_SIZE, offset.y,
@@ -622,5 +833,9 @@ export class LevelScene extends Scene {
         this.particleA?.destroy();
         this.particleB?.destroy();
         this.clearTileObjects();
+        for (const mote of this.ambientMotes) {
+            mote.destroy();
+        }
+        this.ambientMotes = [];
     }
 }

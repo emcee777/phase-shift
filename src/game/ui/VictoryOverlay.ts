@@ -1,5 +1,5 @@
 // Phase Shift — VictoryOverlay
-// Level complete: moves taken, par comparison, 1-3 stars, next level button
+// Level complete: moves taken, par comparison, stars pop in with sparkle
 
 import { Scene, GameObjects } from 'phaser';
 import { COLORS, FONTS, GAME_WIDTH, GAME_HEIGHT } from '../config/constants';
@@ -63,11 +63,29 @@ export class VictoryOverlay {
         }).setOrigin(0.5);
         this.container.add(title);
 
-        // Stars
+        // Stars with glow backing
         const starY = panelY - 65;
         for (let i = 0; i < 3; i++) {
             const x = panelX + (i - 1) * 50;
             const filled = i < starCount;
+
+            // Glow behind star
+            if (filled) {
+                const starGlow = this.scene.add.circle(x, starY, 25, COLORS.STAR_GOLD, 0);
+                this.container.add(starGlow);
+
+                // Animate glow in with star
+                this.scene.tweens.add({
+                    targets: starGlow,
+                    alpha: 0.12,
+                    scaleX: 1.3,
+                    scaleY: 1.3,
+                    duration: 300,
+                    delay: 500 + i * 200,
+                    ease: 'Power2',
+                });
+            }
+
             const star = this.scene.add.circle(
                 x, starY, 18,
                 filled ? COLORS.STAR_GOLD : COLORS.STAR_EMPTY,
@@ -115,7 +133,7 @@ export class VictoryOverlay {
             ease: 'Power2',
         });
 
-        // Animate stars popping in
+        // Animate stars popping in one at a time with sparkle
         this.stars.forEach((star, i) => {
             if (i < starCount) {
                 star.setScale(0);
@@ -126,9 +144,33 @@ export class VictoryOverlay {
                     duration: 300,
                     delay: 400 + i * 200,
                     ease: 'Back.easeOut',
+                    onComplete: () => {
+                        // Sparkle burst on pop
+                        this.spawnStarSparkle(star.x, star.y);
+                    },
                 });
             }
         });
+    }
+
+    private spawnStarSparkle(x: number, y: number): void {
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2;
+            const dist = 12 + Math.random() * 8;
+            const sparkle = this.scene.add.circle(x, y, 1.5, COLORS.STAR_GOLD, 0.8);
+            this.container.add(sparkle);
+
+            this.scene.tweens.add({
+                targets: sparkle,
+                x: x + Math.cos(angle) * dist,
+                y: y + Math.sin(angle) * dist,
+                alpha: 0,
+                scaleX: 0.2,
+                scaleY: 0.2,
+                duration: 350,
+                ease: 'Power2',
+            });
+        }
     }
 
     private createButton(x: number, y: number, label: string, onClick: () => void): void {
