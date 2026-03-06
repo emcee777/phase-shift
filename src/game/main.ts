@@ -1,31 +1,36 @@
-import { Boot } from './scenes/Boot';
-import { GameOver } from './scenes/GameOver';
-import { Game as MainGame } from './scenes/Game';
-import { MainMenu } from './scenes/MainMenu';
-import { AUTO, Game } from 'phaser';
-import { Preloader } from './scenes/Preloader';
+// Phase Shift — Game configuration
 
-//  Find out more information about the Game Config at:
-//  https://docs.phaser.io/api-documentation/typedef/types-core#gameconfig
+import { Boot } from './scenes/Boot';
+import { Preloader } from './scenes/Preloader';
+import { MainMenu } from './scenes/MainMenu';
+import { WorldSelect } from './scenes/WorldSelect';
+import { LevelSelectScene } from './scenes/LevelSelectScene';
+import { LevelScene } from './scenes/LevelScene';
+import { Game as LegacyGame } from './scenes/Game';
+import { GameOver } from './scenes/GameOver';
+import { AUTO, Game } from 'phaser';
+import { GAME_WIDTH, GAME_HEIGHT, COLORS } from './config/constants';
+
 const config: Phaser.Types.Core.GameConfig = {
     type: AUTO,
-    width: 1024,
-    height: 768,
+    width: GAME_WIDTH,
+    height: GAME_HEIGHT,
     parent: 'game-container',
-    backgroundColor: '#028af8',
+    backgroundColor: COLORS.BG,
     scene: [
         Boot,
         Preloader,
         MainMenu,
-        MainGame,
-        GameOver
-    ]
+        WorldSelect,
+        LevelSelectScene,
+        LevelScene,
+        LegacyGame,
+        GameOver,
+    ],
 };
 
 const StartGame = (parent: string) => {
-
     return new Game({ ...config, parent });
-
-}
+};
 
 export default StartGame;
