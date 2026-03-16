@@ -1,6 +1,7 @@
 // Phase Shift — LevelScene
 // THE MAIN PUZZLE SCENE: Split screen, dual grids, full gameplay
 // Visual polish: bloom, ambient particles, enhanced divider, move particles
+// Polish v2: animated background, screen FX, audio skeleton, enhanced victory
 
 import { Scene, GameObjects } from 'phaser';
 import {
@@ -29,6 +30,7 @@ import { HUD } from '../ui/HUD';
 import { TutorialOverlay } from '../ui/TutorialOverlay';
 import { VictoryOverlay } from '../ui/VictoryOverlay';
 import { MenuUI } from '../ui/MenuUI';
+import { AudioManager } from '../audio/AudioManager';
 
 export class LevelScene extends Scene {
     // Systems
@@ -41,6 +43,7 @@ export class LevelScene extends Scene {
     private inputSystem!: InputSystem;
     private transitionSystem!: TransitionSystem;
     private progress!: ProgressManager;
+    private audio!: AudioManager;
 
     // UI
     private hud!: HUD;
@@ -57,9 +60,19 @@ export class LevelScene extends Scene {
     private boxMapB: Map<string, GameObjects.Container> = new Map();
     private gridGraphicsA!: GameObjects.Graphics;
     private gridGraphicsB!: GameObjects.Graphics;
+    private bgGraphicsA!: GameObjects.Graphics;
+    private bgGraphicsB!: GameObjects.Graphics;
     private dividerLine!: GameObjects.Rectangle;
     private dividerGlow!: GameObjects.Rectangle;
     private ambientMotes: GameObjects.Arc[] = [];
+
+    // Animated background scroll offsets
+    private bgScrollA = 0;
+    private bgScrollB = 0;
+
+    // Exit portal references for victory animation
+    private exitPortalA: GameObjects.Container | null = null;
+    private exitPortalB: GameObjects.Container | null = null;
 
     // State
     private currentWorld = 1;
@@ -82,7 +95,7 @@ export class LevelScene extends Scene {
     create(): void {
         this.cameras.main.setBackgroundColor(COLORS.BG);
 
-        // Apply soft bloom
+        // Apply soft bloom + vignette
         applyBloom(this);
 
         // Initialize systems
@@ -95,12 +108,19 @@ export class LevelScene extends Scene {
         this.inputSystem = new InputSystem(this);
         this.transitionSystem = new TransitionSystem(this);
         this.progress = new ProgressManager();
+        this.audio = new AudioManager();
 
         // Initialize UI
         this.hud = new HUD(this);
         this.tutorial = new TutorialOverlay(this);
         this.victory = new VictoryOverlay(this);
         this.pauseMenu = new MenuUI(this);
+
+        // Animated background graphics (depth 0, below everything)
+        this.bgGraphicsA = this.add.graphics();
+        this.bgGraphicsA.setDepth(0);
+        this.bgGraphicsB = this.add.graphics();
+        this.bgGraphicsB.setDepth(0);
 
         // Center divider with glow
         this.dividerGlow = this.add.rectangle(
@@ -148,19 +168,71 @@ export class LevelScene extends Scene {
         this.inputSystem.setOnRestart(() => this.restartLevel());
         this.inputSystem.setOnPause(() => this.togglePause());
 
+        // Enable audio on first user interaction (browser autoplay policy)
+        this.input.once('pointerdown', () => this.audio.enable());
+        this.input.keyboard?.once('keydown', () => this.audio.enable());
+
         // Spawn ambient motes
         this.spawnAmbientMotes();
 
         // Load level
         this.loadLevel(this.currentWorld, this.currentLevelNum);
 
-        // Fade in
-        this.transitionSystem.fadeIn();
+        // Split-reveal entry transition
+        this.transitionSystem.splitReveal();
     }
 
-    update(time: number): void {
+    update(_time: number, delta: number): void {
         if (!this.paused && !this.levelComplete && !this.animating) {
-            this.inputSystem.update(time);
+            this.inputSystem.update(_time);
+        }
+
+        // Animate scrolling background every frame
+        this.updateAnimatedBackground(delta);
+    }
+
+    // --- Animated Background ---
+
+    private updateAnimatedBackground(delta: number): void {
+        // Dimension A scrolls diagonally top-right
+        // Dimension B scrolls diagonally top-left (opposite direction)
+        // Speed: very slow — barely perceptible, just adds life
+        const speed = 0.012;
+        this.bgScrollA = (this.bgScrollA + speed * delta) % 40;
+        this.bgScrollB = (this.bgScrollB + speed * delta) % 40;
+
+        this.drawDiagonalBg(this.bgGraphicsA, Dimension.A, this.bgScrollA, 1);
+        this.drawDiagonalBg(this.bgGraphicsB, Dimension.B, this.bgScrollB, -1);
+    }
+
+    private drawDiagonalBg(gfx: GameObjects.Graphics, dim: Dimension, scroll: number, dir: 1 | -1): void {
+        gfx.clear();
+
+        const panelIndex = dim === Dimension.A ? 0 : 1;
+        const panelX = panelIndex * PANEL_WIDTH;
+        const color = dim === Dimension.A ? COLORS.DIM_A_PRIMARY : COLORS.DIM_B_PRIMARY;
+        const spacing = 40; // px between diagonal lines
+
+        const areaY = HUD_HEIGHT;
+        const areaH = GAME_HEIGHT - HUD_HEIGHT;
+
+        // Draw diagonal lines spanning the panel
+        // Lines go at 45° angle, scrolling in `dir` direction
+        gfx.lineStyle(1, color, 0.03);
+
+        // Number of lines needed to cover panel + overflow for seamless scroll
+        const lineCount = Math.ceil((PANEL_WIDTH + areaH) / spacing) + 2;
+
+        for (let i = -1; i < lineCount; i++) {
+            const base = i * spacing + scroll * dir;
+
+            // Line from top-edge point to bottom-edge point (45° diagonal)
+            const x1 = panelX + base;
+            const y1 = areaY;
+            const x2 = panelX + base + areaH * dir;
+            const y2 = areaY + areaH;
+
+            gfx.lineBetween(x1, y1, x2, y2);
         }
     }
 
@@ -270,6 +342,46 @@ export class LevelScene extends Scene {
         }
     }
 
+    // --- Screen Effects ---
+
+    /**
+     * Subtle camera micro-shift in the given direction — adds physical weight to movement.
+     * 1px shift, settles in 50ms.
+     */
+    private cameraMicroShift(direction: Direction): void {
+        const offset = 1; // px
+        let dx = 0;
+        let dy = 0;
+
+        switch (direction) {
+            case Direction.UP:    dy = -offset; break;
+            case Direction.DOWN:  dy =  offset; break;
+            case Direction.LEFT:  dx = -offset; break;
+            case Direction.RIGHT: dx =  offset; break;
+        }
+
+        // Snap to offset, then spring back
+        const cam = this.cameras.main;
+        cam.setScroll(cam.scrollX + dx, cam.scrollY + dy);
+        this.tweens.add({
+            targets: cam,
+            scrollX: cam.scrollX - dx,
+            scrollY: cam.scrollY - dy,
+            duration: 50,
+            ease: 'Power2',
+        });
+    }
+
+    /**
+     * Box push: slightly stronger micro-shift + brief 0.003 camera shake.
+     */
+    private cameraBoxPushEffect(direction: Direction): void {
+        this.cameraMicroShift(direction);
+        this.time.delayedCall(40, () => {
+            this.cameras.main.shake(80, 0.003);
+        });
+    }
+
     // --- Level Loading ---
 
     private loadLevel(world: number, level: number): void {
@@ -339,9 +451,14 @@ export class LevelScene extends Scene {
         this.moveCount++;
         this.animating = true;
 
+        // Camera micro-shift — adds physical weight to every step
+        this.cameraMicroShift(direction);
+
+        // Play move sound
+        this.audio.playMove();
+
         // Animate player movement + spawn move particles at previous position
         if (result.playerAMoved) {
-            // Spawn particles at current (pre-move) position before animating
             this.spawnMoveParticles(this.particleA.getContainer().x, this.particleA.getContainer().y, COLORS.DIM_A_PRIMARY);
             const px = this.gridToPixelX(Dimension.A, result.newPlayerA.x);
             const py = this.gridToPixelY(Dimension.A, result.newPlayerA.y);
@@ -355,7 +472,9 @@ export class LevelScene extends Scene {
             this.particleB.moveTo(px, py);
         }
 
-        // Animate box pushes with particles
+        // Track whether any box was pushed for camera effect
+        const anyBoxPushed = !!(result.boxPushA || result.boxPushB);
+
         if (result.boxPushA) {
             const key = `${result.boxPushA.from.x},${result.boxPushA.from.y}`;
             const box = this.boxMapA.get(key);
@@ -386,6 +505,11 @@ export class LevelScene extends Scene {
             }
         }
 
+        if (anyBoxPushed) {
+            this.cameraBoxPushEffect(direction);
+            this.audio.playBoxPush();
+        }
+
         // Entangled pushes
         if (result.entangledPushes) {
             for (const ep of result.entangledPushes) {
@@ -399,6 +523,9 @@ export class LevelScene extends Scene {
                     map.delete(key);
                     map.set(`${ep.to.x},${ep.to.y}`, box);
                 }
+            }
+            if (result.entangledPushes.length > 0) {
+                this.audio.playEntangleConnect();
             }
         }
 
@@ -441,6 +568,9 @@ export class LevelScene extends Scene {
         );
         this.hud.setCollapseMode(this.grid.getCollapsedDimension());
 
+        // Undo sound
+        this.audio.playUndo();
+
         // Update particle visibility for collapse state
         this.updateCollapseVisuals();
 
@@ -481,6 +611,12 @@ export class LevelScene extends Scene {
             this.collapseSystem.getCharges(),
             this.currentLevel?.collapseCharges || 0,
         );
+
+        // Gold screen flash on collapse activate (subtle — low RGB values for gentle tint)
+        this.cameras.main.flash(ANIM.COLLAPSE_FLASH, 60, 45, 0);
+
+        // Collapse sound
+        this.audio.playCollapseActivate();
 
         // Collapse swirl particles around active player
         const activeDim = this.collapseSystem.getCollapsedDimension();
@@ -526,7 +662,7 @@ export class LevelScene extends Scene {
 
         // Show victory after delay
         this.time.delayedCall(ANIM.LEVEL_COMPLETE_DELAY, () => {
-            this.playCompletionAnimation();
+            this.playCompletionAnimation(starCount);
 
             const nextLevel = this.levelLoader.getNextLevel();
 
@@ -552,38 +688,110 @@ export class LevelScene extends Scene {
         });
     }
 
-    private playCompletionAnimation(): void {
-        // Enhanced burst from both exits
+    private playCompletionAnimation(starCount: number): void {
+        // Green flash on level complete (subtle — low RGB values for gentle tint)
+        this.cameras.main.flash(300, 0, 45, 0);
+
+        // Brief celebratory camera shake after flash
+        this.time.delayedCall(200, () => {
+            this.cameras.main.shake(200, 0.004);
+        });
+
+        // Camera zoom to exit portal area (1.0 → 1.05, spring back)
+        this.tweens.add({
+            targets: this.cameras.main,
+            zoom: 1.05,
+            duration: 300,
+            ease: 'Power2',
+            onComplete: () => {
+                this.tweens.add({
+                    targets: this.cameras.main,
+                    zoom: 1.0,
+                    duration: 400,
+                    ease: 'Back.easeOut',
+                });
+            },
+        });
+
+        // Play level complete + star sounds
+        this.audio.playLevelComplete();
+        for (let i = 0; i < starCount; i++) {
+            this.audio.playStarEarned(i);
+        }
+
+        // Exit portal expand dramatically
+        if (this.exitPortalA) {
+            this.tweens.add({
+                targets: this.exitPortalA,
+                scaleX: 3.0,
+                scaleY: 3.0,
+                alpha: 0,
+                duration: 500,
+                ease: 'Power2',
+            });
+        }
+        if (this.exitPortalB) {
+            this.tweens.add({
+                targets: this.exitPortalB,
+                scaleX: 3.0,
+                scaleY: 3.0,
+                alpha: 0,
+                duration: 500,
+                ease: 'Power2',
+            });
+        }
+
+        // 30-particle burst from player positions in both dimensions
         const posA = this.grid.getPlayerPos(Dimension.A);
         const posB = this.grid.getPlayerPos(Dimension.B);
+        const pxA = this.gridToPixelX(Dimension.A, posA.x);
+        const pyA = this.gridToPixelY(Dimension.A, posA.y);
+        const pxB = this.gridToPixelX(Dimension.B, posB.x);
+        const pyB = this.gridToPixelY(Dimension.B, posB.y);
 
-        this.burstParticles(
-            this.gridToPixelX(Dimension.A, posA.x),
-            this.gridToPixelY(Dimension.A, posA.y),
-            COLORS.DIM_A_PRIMARY,
-        );
-        this.burstParticles(
-            this.gridToPixelX(Dimension.B, posB.x),
-            this.gridToPixelY(Dimension.B, posB.y),
-            COLORS.DIM_B_PRIMARY,
-        );
+        this.burstParticles(pxA, pyA, COLORS.DIM_A_PRIMARY);
+        this.burstParticles(pxB, pyB, COLORS.DIM_B_PRIMARY);
+        this.burstSparkleRing(pxA, pyA, COLORS.DIM_A_GLOW);
+        this.burstSparkleRing(pxB, pyB, COLORS.DIM_B_GLOW);
 
-        // Additional sparkle ring
-        this.burstSparkleRing(
-            this.gridToPixelX(Dimension.A, posA.x),
-            this.gridToPixelY(Dimension.A, posA.y),
-            COLORS.DIM_A_GLOW,
-        );
-        this.burstSparkleRing(
-            this.gridToPixelX(Dimension.B, posB.x),
-            this.gridToPixelY(Dimension.B, posB.y),
-            COLORS.DIM_B_GLOW,
-        );
+        // Golden star burst at star positions (mid-screen)
+        if (starCount > 0) {
+            this.time.delayedCall(350, () => {
+                this.spawnStarBurst(GAME_WIDTH / 2, GAME_HEIGHT * 0.35, starCount);
+            });
+        }
+    }
+
+    private spawnStarBurst(cx: number, cy: number, count: number): void {
+        // Offset positions for 3 potential stars
+        const offsets = [-50, 0, 50];
+        for (let i = 0; i < count && i < 3; i++) {
+            const bx = cx + offsets[i];
+            this.time.delayedCall(i * 120, () => {
+                for (let j = 0; j < 8; j++) {
+                    const angle = (j / 8) * Math.PI * 2;
+                    const dist = 15 + Math.random() * 20;
+                    const spark = this.add.circle(bx, cy, 2 + Math.random(), COLORS.STAR_GOLD, 0.9);
+                    spark.setDepth(450);
+                    this.tweens.add({
+                        targets: spark,
+                        x: bx + Math.cos(angle) * dist,
+                        y: cy + Math.sin(angle) * dist,
+                        alpha: 0,
+                        scaleX: 0.1,
+                        scaleY: 0.1,
+                        duration: 500 + Math.random() * 300,
+                        ease: 'Power2',
+                        onComplete: () => spark.destroy(),
+                    });
+                }
+            });
+        }
     }
 
     private burstParticles(x: number, y: number, color: number): void {
-        for (let i = 0; i < 16; i++) {
-            const angle = (i / 16) * Math.PI * 2;
+        for (let i = 0; i < 20; i++) {
+            const angle = (i / 20) * Math.PI * 2;
             const dist = 45 + Math.random() * 35;
             const dot = this.add.circle(x, y, 2 + Math.random() * 3, color, 0.9);
             dot.setDepth(400);
@@ -675,6 +883,8 @@ export class LevelScene extends Scene {
     private renderGrids(): void {
         // Clear old tiles
         this.clearTileObjects();
+        this.exitPortalA = null;
+        this.exitPortalB = null;
 
         const state = this.grid.getState();
 
@@ -770,6 +980,12 @@ export class LevelScene extends Scene {
                     case TileType.EXIT: {
                         const exit = createExitPortal(this, px, py);
                         tileObjects.push(exit);
+                        // Track for victory animation
+                        if (dim === Dimension.A) {
+                            this.exitPortalA = exit;
+                        } else {
+                            this.exitPortalB = exit;
+                        }
                         break;
                     }
                     case TileType.PHASE_GATE: {
@@ -832,10 +1048,13 @@ export class LevelScene extends Scene {
         this.pauseMenu?.destroy();
         this.particleA?.destroy();
         this.particleB?.destroy();
+        this.audio?.destroy();
         this.clearTileObjects();
         for (const mote of this.ambientMotes) {
             mote.destroy();
         }
         this.ambientMotes = [];
+        this.bgGraphicsA?.destroy();
+        this.bgGraphicsB?.destroy();
     }
 }

@@ -1,5 +1,6 @@
 // Phase Shift — Box rendering
 // Rounded corners, inner gradient effect, squash-and-stretch push animation
+// Phaser FX: subtle preFX glow for entangled boxes
 
 import { GameObjects, Scene } from 'phaser';
 import { CELL_SIZE, COLORS, ANIM } from '../config/constants';
@@ -44,9 +45,15 @@ export function createBox(
         ], COLORS.ENTANGLED_BOX_STROKE, 0.25);
         items.push(diamond);
 
-        // Subtle pulsing glow for entangled boxes
+        // Subtle pulsing glow aura for entangled boxes
         const aura = scene.add.circle(0, 0, size * 0.45, COLORS.ENTANGLED_BOX, 0.06);
         items.push(aura);
+
+        // preFX glow on aura — adds purple halo to entangled boxes
+        if (aura.preFX) {
+            aura.preFX.addGlow(COLORS.ENTANGLED_BOX, 4, 0, false, 0.1, 16);
+        }
+
         scene.tweens.add({
             targets: aura,
             alpha: 0.12,

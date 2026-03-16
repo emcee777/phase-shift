@@ -1,5 +1,6 @@
 // Phase Shift — Phase Gate rendering
 // Shimmering portal with vertical scan line and floating particles
+// Phaser FX: preFX shine on scan line for shimmer effect
 
 import { GameObjects, Scene } from 'phaser';
 import { CELL_SIZE, COLORS, ANIM } from '../config/constants';
@@ -26,6 +27,11 @@ export function createPhaseGate(
 
     // Vertical scan line — thin bright line that scrolls through
     const scanLine = scene.add.rectangle(0, 0, 2, size, glow, 0.2);
+
+    // preFX shine on scan line — adds a moving highlight as it sweeps
+    if (scanLine.preFX) {
+        scanLine.preFX.addShine(0.3, 0.3, 3);
+    }
 
     // Dimension indicator letter
     const items: GameObjects.GameObject[] = [bg, ring1, ring2, scanLine];

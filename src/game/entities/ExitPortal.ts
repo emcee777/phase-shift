@@ -1,5 +1,6 @@
 // Phase Shift — Exit portal rendering
 // Pulsing concentric rings with staggered timing, slow outer rotation
+// Phaser FX: subtle preFX glow on center + inner ring
 
 import { GameObjects, Scene } from 'phaser';
 import { CELL_SIZE, COLORS, ANIM } from '../config/constants';
@@ -27,6 +28,12 @@ export function createExitPortal(scene: Scene, x: number, y: number): GameObject
 
     const container = scene.add.container(x, y, [aura, ring3, ring2, ring1, center]);
     container.setDepth(10);
+
+    // Per-object preFX glow — elegant green halo on center dot
+    // Subtle: low intensity (0.15), narrow outer strength
+    if (center.preFX) {
+        center.preFX.addGlow(COLORS.EXIT_GLOW, 6, 0, false, 0.15, 16);
+    }
 
     // Staggered pulse on each ring
     scene.tweens.add({

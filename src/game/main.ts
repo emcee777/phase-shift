@@ -17,6 +17,13 @@ const config: Phaser.Types.Core.GameConfig = {
     height: GAME_HEIGHT,
     parent: 'game-container',
     backgroundColor: COLORS.BG,
+    scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: GAME_WIDTH,
+        height: GAME_HEIGHT,
+        parent: 'game-container',
+    },
     scene: [
         Boot,
         Preloader,
