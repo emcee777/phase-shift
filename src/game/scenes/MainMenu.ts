@@ -41,7 +41,10 @@ export class MainMenu extends Scene {
         // Play button
         const playBtn = this.createButton(GAME_WIDTH / 2, GAME_HEIGHT * 0.62, 'PLAY', 180, 48);
         playBtn.on('pointerdown', () => {
-            this.scene.start('WorldSelect');
+            this.cameras.main.fadeOut(400, 0, 0, 0);
+            this.cameras.main.once('camerafadeoutcomplete', () => {
+                this.scene.start('WorldSelect');
+            });
         });
 
         // Star count

@@ -387,7 +387,10 @@ export class LevelScene extends Scene {
     private loadLevel(world: number, level: number): void {
         this.currentLevel = this.levelLoader.loadLevel(world, level);
         if (!this.currentLevel) {
-            this.scene.start('WorldSelect');
+            this.cameras.main.fadeOut(400, 0, 0, 0);
+            this.cameras.main.once('camerafadeoutcomplete', () => {
+                this.scene.start('WorldSelect');
+            });
             return;
         }
 
@@ -682,7 +685,10 @@ export class LevelScene extends Scene {
                     this.restartLevel();
                 },
                 onMenu: () => {
-                    this.scene.start('LevelSelectScene', { world: this.currentWorld });
+                    this.cameras.main.fadeOut(400, 0, 0, 0);
+                    this.cameras.main.once('camerafadeoutcomplete', () => {
+                        this.scene.start('LevelSelectScene', { world: this.currentWorld });
+                    });
                 },
             });
         });
@@ -872,7 +878,10 @@ export class LevelScene extends Scene {
                     this.restartLevel();
                 },
                 onQuit: () => {
-                    this.scene.start('LevelSelectScene', { world: this.currentWorld });
+                    this.cameras.main.fadeOut(400, 0, 0, 0);
+                    this.cameras.main.once('camerafadeoutcomplete', () => {
+                        this.scene.start('LevelSelectScene', { world: this.currentWorld });
+                    });
                 },
             });
         }

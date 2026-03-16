@@ -17,6 +17,9 @@ export class WorldSelect extends Scene {
         this.progress = new ProgressManager();
         this.cameras.main.setBackgroundColor(COLORS.BG);
 
+        // Fade in from previous scene
+        this.cameras.main.fadeIn(400, 0, 0, 0);
+
         // Title
         this.add.text(GAME_WIDTH / 2, 50, 'SELECT WORLD', {
             ...FONTS.TITLE,
@@ -53,7 +56,12 @@ export class WorldSelect extends Scene {
         backBg.setInteractive({ useHandCursor: true });
         backBg.on('pointerover', () => backBg.setFillStyle(COLORS.BUTTON_HOVER));
         backBg.on('pointerout', () => backBg.setFillStyle(COLORS.BUTTON));
-        backBg.on('pointerdown', () => this.scene.start('MainMenu'));
+        backBg.on('pointerdown', () => {
+            this.cameras.main.fadeOut(400, 0, 0, 0);
+            this.cameras.main.once('camerafadeoutcomplete', () => {
+                this.scene.start('MainMenu');
+            });
+        });
 
         this.add.text(80, GAME_HEIGHT - 40, 'BACK', {
             ...FONTS.BUTTON, fontSize: '14px',
@@ -80,7 +88,10 @@ export class WorldSelect extends Scene {
             bg.on('pointerover', () => bg.setFillStyle(COLORS.BUTTON_HOVER));
             bg.on('pointerout', () => bg.setFillStyle(bgColor));
             bg.on('pointerdown', () => {
-                this.scene.start('LevelSelectScene', { world });
+                this.cameras.main.fadeOut(400, 0, 0, 0);
+                this.cameras.main.once('camerafadeoutcomplete', () => {
+                    this.scene.start('LevelSelectScene', { world });
+                });
             });
         }
 
