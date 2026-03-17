@@ -207,9 +207,11 @@ export class MoveResolver {
             return { canMove: false, newPos: player };
         }
 
-        // Phase gate — check if passable in this dimension
+        // Phase gate — only passable if no dimension restriction or matching dimension
         if (targetCell.type === TileType.PHASE_GATE) {
-            // Phase gates are always passable (they're like floor but special)
+            if (targetCell.permeableDimension && targetCell.permeableDimension !== dim) {
+                return { canMove: false, newPos: player };
+            }
             return { canMove: true, newPos: { x: newX, y: newY } };
         }
 

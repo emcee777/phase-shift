@@ -3,7 +3,7 @@
 
 import {
     TileType, Dimension, Position, GridCell, LevelGrid,
-    DualGridState, LevelDefinition,
+    DualGridState, LevelDefinition, UndoState,
 } from '../types';
 
 export class DualGrid {
@@ -133,10 +133,12 @@ export class DualGrid {
         const behindY = boxY + dy;
         const behind = this.getCell(dim, behindX, behindY);
         if (!behind) return false;
+        if (behind.type === TileType.PHASE_GATE) {
+            return !behind.permeableDimension || behind.permeableDimension === dim;
+        }
         return behind.type === TileType.FLOOR ||
                behind.type === TileType.EXIT ||
                behind.type === TileType.ICE ||
-               behind.type === TileType.PHASE_GATE ||
                behind.type === TileType.COLLAPSE_PICKUP;
     }
 
@@ -186,15 +188,17 @@ export class DualGrid {
     }
 
     /** Serialize current state for undo stack */
-    serialize(moveCount: number): {
-        dimA: number[][]; dimB: number[][];
-        playerA: Position; playerB: Position;
-        collapseCharges: number; collapsedDimension: Dimension | null;
-        moveCount: number;
-    } {
+    serialize(moveCount: number): UndoState {
+        const entangleIdsA: Record<string, number> = {};
+        const entangleIdsB: Record<string, number> = {};
+        this.collectEntangleIds(this.state.dimA, entangleIdsA);
+        this.collectEntangleIds(this.state.dimB, entangleIdsB);
+
         return {
             dimA: this.serializeGrid(this.state.dimA),
             dimB: this.serializeGrid(this.state.dimB),
+            entangleIdsA,
+            entangleIdsB,
             playerA: { ...this.state.playerA },
             playerB: { ...this.state.playerB },
             collapseCharges: this.state.collapseCharges,
@@ -204,17 +208,35 @@ export class DualGrid {
     }
 
     /** Restore from serialized state */
-    restore(saved: {
-        dimA: number[][]; dimB: number[][];
-        playerA: Position; playerB: Position;
-        collapseCharges: number; collapsedDimension: Dimension | null;
-    }): void {
+    restore(saved: UndoState): void {
         this.state.dimA = this.parseGrid(saved.dimA);
         this.state.dimB = this.parseGrid(saved.dimB);
+        this.applyEntangleIds(this.state.dimA, saved.entangleIdsA || {});
+        this.applyEntangleIds(this.state.dimB, saved.entangleIdsB || {});
         this.state.playerA = { ...saved.playerA };
         this.state.playerB = { ...saved.playerB };
         this.state.collapseCharges = saved.collapseCharges;
         this.state.collapsedDimension = saved.collapsedDimension;
+    }
+
+    private collectEntangleIds(grid: LevelGrid, out: Record<string, number>): void {
+        for (let row = 0; row < grid.height; row++) {
+            for (let col = 0; col < grid.width; col++) {
+                const cell = grid.cells[row][col];
+                if (cell.entangleId !== undefined) {
+                    out[`${col},${row}`] = cell.entangleId;
+                }
+            }
+        }
+    }
+
+    private applyEntangleIds(grid: LevelGrid, ids: Record<string, number>): void {
+        for (const [key, id] of Object.entries(ids)) {
+            const [col, row] = key.split(',').map(Number);
+            if (row < grid.height && col < grid.width) {
+                grid.cells[row][col].entangleId = id;
+            }
+        }
     }
 
     private serializeGrid(grid: LevelGrid): number[][] {

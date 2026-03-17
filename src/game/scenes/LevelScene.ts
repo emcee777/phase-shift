@@ -25,7 +25,6 @@ import { createExitPortal } from '../entities/ExitPortal';
 import { createPhaseGate } from '../entities/PhaseGate';
 import { createCollapsePickup } from '../entities/CollapsePickup';
 import { createIceTile } from '../entities/IceTile';
-import { applyBloom } from '../rendering/BloomPipeline';
 import { HUD } from '../ui/HUD';
 import { TutorialOverlay } from '../ui/TutorialOverlay';
 import { VictoryOverlay } from '../ui/VictoryOverlay';
@@ -94,9 +93,6 @@ export class LevelScene extends Scene {
 
     create(): void {
         this.cameras.main.setBackgroundColor(COLORS.BG);
-
-        // Apply soft bloom + vignette
-        applyBloom(this);
 
         // Initialize systems
         this.grid = new DualGrid();

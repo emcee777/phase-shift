@@ -98,6 +98,8 @@ export interface MoveResult {
 export interface UndoState {
     dimA: number[][];
     dimB: number[][];
+    entangleIdsA: Record<string, number>;
+    entangleIdsB: Record<string, number>;
     playerA: Position;
     playerB: Position;
     collapseCharges: number;

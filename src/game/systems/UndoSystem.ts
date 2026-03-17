@@ -1,22 +1,12 @@
 // Phase Shift — UndoSystem
 // Full undo/redo stack for puzzle state
 
-import { Dimension, Position } from '../types';
+import { UndoState } from '../types';
 import { DualGrid } from './DualGrid';
 
-interface UndoEntry {
-    dimA: number[][];
-    dimB: number[][];
-    playerA: Position;
-    playerB: Position;
-    collapseCharges: number;
-    collapsedDimension: Dimension | null;
-    moveCount: number;
-}
-
 export class UndoSystem {
-    private undoStack: UndoEntry[] = [];
-    private redoStack: UndoEntry[] = [];
+    private undoStack: UndoState[] = [];
+    private redoStack: UndoState[] = [];
     private grid: DualGrid;
 
     constructor(grid: DualGrid) {
