@@ -17,7 +17,7 @@ const phasermsg = () => {
 }   
 
 export default defineConfig({
-    base: './',
+    base: '/phase-shift/',
     logLevel: 'warning',
     build: {
         rollupOptions: {
